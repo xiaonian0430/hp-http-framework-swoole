@@ -5,7 +5,9 @@
  * @contact: xiaonian030@163.com
  * @datetime: 2021-09-14 10:00
  */
-use HP\Swoole\Http;
+use Swoole\Http\Server as HttpServer;
+use Swoole\Http\Request;
+use Swoole\Http\Response;
 
 //初始化
 ini_set('display_errors', 'on');
@@ -45,3 +47,46 @@ defined('CONFIG') or define('CONFIG', $conf);
 
 //自动加载文件
 require_once SERVER_ROOT . '/core/autoload.php';
+
+//初始化服务
+$http = new HttpServer(CONFIG['HTTP_FRAMEWORK']['LISTEN_ADDRESS'], CONFIG['HTTP_FRAMEWORK']['PORT']);
+
+// 接收请求
+$http->on('Request', function (Request $request, Response $response) {
+    //路由分发: 模块=module 类=class 方法=function
+    $path=trim($request->server['request_uri'],'/');
+    $dot=strpos($path, '.');
+    if($dot===false){
+        $paths=explode('/',$path);
+        if(isset($paths[0])){
+            $module=ucwords($paths[0]);
+        }else{
+            $module='Index';
+        }
+        if(isset($paths[1])){
+            $class_name=ucwords($paths[1]);
+        }else{
+            $class_name='Index';
+        }
+        $function = $paths[2] ?? 'index';
+        $class='App\HttpController\\'.$module.'\\'.$class_name;
+        if(class_exists($class)){
+            $instance=new $class($response, $request);
+            if(method_exists($instance, $function)){
+                $instance->$function();
+            }else{
+                $instance=new App\HttpController\Controller($response, $request);
+                $instance->writeJsonNoFound();
+            }
+        }else{
+            $instance=new App\HttpController\Controller($response, $request);
+            $instance->writeJsonNoFound();
+        }
+    }else{
+        $instance=new App\HttpController\Controller($response, $request);
+        $instance->writeFile($path);
+    }
+});
+
+// 启动服务
+$http->start();

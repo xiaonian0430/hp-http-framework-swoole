@@ -5,15 +5,14 @@
  * @datetime: 2019-12-01 14:00
  */
 namespace App\HttpController;
-use Workerman\Protocols\Http\Request;
-use Workerman\Connection\TcpConnection;
-use Workerman\Protocols\Http\Response;
+use Swoole\Http\Request;
+use Swoole\Http\Response;
 class Controller {
-    protected $connection;
+    protected $response;
     protected $request;
 
-    public function __construct(TcpConnection $connection, Request $request) {
-        $this->connection=$connection;
+    public function __construct(Response $response, Request $request) {
+        $this->response=$response;
         $this->request=$request;
     }
 
@@ -23,26 +22,33 @@ class Controller {
             "result" => !empty($result)?$result:['empty'=>1],
             "msg" => $msg
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $response=new Response(200, [
-            'Server'=>'InfobirdCloud',
-            'Content-type'=>'application/json;charset=utf-8'
-        ], $body);
-        $this->connection->send($response);
+        $this->response->setStatusCode(200);
+        $this->response->header('Content-Type', 'text/json; charset=utf-8');
+        $this->response->header('Server', 'InfobirdCloud');
+        $this->response->end($body);
     }
 
-    public function writeHtml($file) {
-        $response=new Response(200, [
-            'Server'=>'InfobirdCloud',
-            'Content-type'=>'application/html;charset=utf-8'
-        ]);
-        $this->connection->send($response->withFile(PUBLIC_ROOT.'/'.$file));
+    public function writeFile($file) {
+        $file_abs=PUBLIC_ROOT.'/'.$file;
+        if (!\is_file($file_abs)) {
+            $this->response->setStatusCode(404);
+            $this->response->header('Content-Type', 'text/html; charset=utf-8');
+            $this->response->header('Server', 'InfobirdCloud');
+            $this->response->end('<h3>404 Not Found</h3>');
+        }else{
+            $mime_type = mime_content_type($file_abs);
+            $this->response->setStatusCode(200);
+            $this->response->header('Content-Type', $mime_type.'; charset=utf-8');
+            $this->response->header('Server', 'InfobirdCloud');
+            $this->response->sendfile($file_abs);
+        }
     }
 
     public function writeJsonNoFound() {
         $this->writeJson(400, [
-            "uri"=>$this->request->host().$this->request->path(),
-            "method"=>$this->request->method(),
-            "param"=>$this->request->get()?:$this->request->post()?:['empty'=>1]
+            "uri"=>$this->request->header['host'].$this->request->server['request_uri'],
+            "method"=>$this->request->getMethod(),
+            "param"=>$this->request->get?:$this->request->post?:['empty'=>1]
         ], 'the api uri not found');
     }
 }
