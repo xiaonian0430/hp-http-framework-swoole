@@ -46,7 +46,12 @@ if (file_exists($config_path)) {
 defined('CONFIG') or define('CONFIG', $conf);
 
 //自动加载文件
-require_once SERVER_ROOT . '/core/autoload.php';
+$auto_file=SERVER_ROOT . '/vendor/autoload.php';
+if (file_exists($auto_file)) {
+    require_once $auto_file;
+} else {
+    exit("Please composer install.\n");
+}
 
 //初始化服务
 $http = new HttpServer(CONFIG['HTTP_FRAMEWORK']['LISTEN_ADDRESS'], CONFIG['HTTP_FRAMEWORK']['PORT']);
