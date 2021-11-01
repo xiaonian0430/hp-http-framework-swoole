@@ -6,8 +6,7 @@
  * @datetime: 2021-09-14 10:00
  */
 use Swoole\Http\Server as HttpServer;
-use Swoole\Http\Request;
-use Swoole\Http\Response;
+use HP\Http\App;
 
 //初始化
 ini_set('display_errors', 'on');
@@ -21,12 +20,18 @@ $log_path=SERVER_ROOT.'/temp/log';
 if(!is_dir($log_path)){
     mkdir($log_path, 0777, true);
 }
-defined('TEMP_ROOT') or define('TEMP_ROOT', $temp_path);
-defined('LOG_ROOT') or define('LOG_ROOT', $log_path);
 
 // 检查扩展或环境
 if(strpos(strtolower(PHP_OS), 'win') === 0) {
-    exit("run.php not support windows.\n");
+    exit("start.php not support windows.\n");
+}
+
+//自动加载文件
+$auto_file=SERVER_ROOT . '/vendor/autoload.php';
+if (file_exists($auto_file)) {
+    require_once $auto_file;
+} else {
+    exit("Please composer install.\n");
 }
 
 //导入配置文件
@@ -45,52 +50,21 @@ if (file_exists($config_path)) {
 }
 defined('CONFIG') or define('CONFIG', $conf);
 
-//自动加载文件
-$auto_file=SERVER_ROOT . '/vendor/autoload.php';
-if (file_exists($auto_file)) {
-    require_once $auto_file;
-} else {
-    exit("Please composer install.\n");
-}
-
 //初始化服务
-$http = new HttpServer(CONFIG['HTTP_FRAMEWORK']['LISTEN_ADDRESS'], CONFIG['HTTP_FRAMEWORK']['PORT']);
+$http = new HttpServer(CONFIG['HTTP_SERVER']['LISTEN_ADDRESS'], CONFIG['HTTP_SERVER']['PORT']);
 
+$http->set([
+    'log_level'=> SWOOLE_LOG_ERROR,
+    'log_file'=> $log_path.'/log.log',
+    'pid_file'=> $temp_path.'/pid.pid',
+    'stats_file' => $temp_path . '/stats.log',
+    'worker_num'=> CONFIG['HTTP_SERVER']['PROCESS_COUNT'],
+    'task_tmpdir'=> $temp_path,
+    'max_coroutine'=> 100000
+]);
 // 接收请求
-$http->on('Request', function (Request $request, Response $response) {
-    //路由分发: 模块=module 类=class 方法=function
-    $path=trim($request->server['request_uri'],'/');
-    $dot=strpos($path, '.');
-    if($dot===false){
-        $paths=explode('/',$path);
-        if(isset($paths[0])){
-            $module=ucwords($paths[0]);
-        }else{
-            $module='Index';
-        }
-        if(isset($paths[1])){
-            $class_name=ucwords($paths[1]);
-        }else{
-            $class_name='Index';
-        }
-        $function = $paths[2] ?? 'index';
-        $class='App\HttpController\\'.$module.'\\'.$class_name;
-        if(class_exists($class)){
-            $instance=new $class($response, $request);
-            if(method_exists($instance, $function)){
-                $instance->$function();
-            }else{
-                $instance=new App\HttpController\Controller($response, $request);
-                $instance->writeJsonNoFound();
-            }
-        }else{
-            $instance=new App\HttpController\Controller($response, $request);
-            $instance->writeJsonNoFound();
-        }
-    }else{
-        $instance=new App\HttpController\Controller($response, $request);
-        $instance->writeFile($path);
-    }
+$http->on('Request', function ($request, $response) {
+    new App($response, $request);
 });
 
 // 启动服务
